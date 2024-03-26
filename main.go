@@ -83,7 +83,9 @@ func main() {
 			return u.User.Username(), p
 		},
 		ContextTimeoutEnabled: true,
-		TLSConfig:             &tls.Config{InsecureSkipVerify: true},
+	}
+	if u.Scheme == "rediss" {
+		clientOptions.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
 	var stickyClient *redis.Client
