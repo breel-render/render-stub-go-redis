@@ -23,7 +23,7 @@ var (
 	RedisQuery       = envOr("REDIS_QUERY", "PING")
 	FreshClient      = envOr("FRESH_CLIENT", "true") != "false"
 	StickyClient     = envOr("STICKY_CLIENT", "false") != "false"
-	NoClose          = envOr("NO_CLOSE", "true") == "true"
+	NoClose          = envOr("NO_CLOSE", "false") != "false"
 )
 
 func mustParseDuration(s string) time.Duration {
