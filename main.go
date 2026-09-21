@@ -11,6 +11,8 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -104,8 +106,11 @@ func main() {
 	}
 	go func() {
 		semaphores := make(chan bool, ForkConcurrency)
+		wg := &sync.WaitGroup{}
+		goodForks := &atomic.Uint32{}
 		for _, stickyClient := range stickyClients[1:] {
 			stickyClient := stickyClient
+			wg.Add(1)
 			go func() {
 				semaphores <- true
 				if err := tryClient(ctx, stickyClient); err != nil {
@@ -114,6 +119,8 @@ func main() {
 				<-semaphores
 			}()
 		}
+		wg.Wait()
+		log.Printf("%d/%d forks succeeded", goodForks, Forks)
 	}()
 
 	for {
