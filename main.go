@@ -135,7 +135,7 @@ func main() {
 			}
 		}
 
-		if len(stickyClients) > 0 {
+		if StickyClient {
 			if err := tryClient(ctx, stickyClients[0]); err != nil {
 				log.Printf("failed to use a sticky client: %v", err)
 			}
