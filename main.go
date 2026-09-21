@@ -116,12 +116,14 @@ func main() {
 				semaphores <- true
 				if err := tryClient(ctx, stickyClient); err != nil {
 					log.Printf("a fork failed: %v", err)
+				} else {
+					goodForks.Add(1)
 				}
 				<-semaphores
 			}()
 		}
 		wg.Wait()
-		log.Printf("%d/%d forks succeeded", goodForks, Forks)
+		log.Printf("%d/%d forks succeeded", goodForks.Load(), Forks)
 	}()
 
 	for {
