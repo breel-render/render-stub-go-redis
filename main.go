@@ -61,7 +61,7 @@ func main() {
 	go func() {
 		for ctx.Err() == nil {
 			time.Sleep(time.Second)
-			http.ListenAndServe(":8080", http.HandlerFunc(http.NotFound))
+			http.ListenAndServe(":10000", http.HandlerFunc(http.NotFound))
 		}
 	}()
 
