@@ -112,6 +112,7 @@ func main() {
 			stickyClient := stickyClient
 			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				semaphores <- true
 				if err := tryClient(ctx, stickyClient); err != nil {
 					log.Printf("a fork failed: %v", err)
