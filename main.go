@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -17,14 +18,23 @@ import (
 )
 
 var (
-	RedisConnString  = os.Getenv("REDIS_CONN_STRING")
-	QueryInterval    = mustParseDuration(envOr("QUERY_INTERVAL", "3s"))
-	PingPongInterval = mustParseDuration(envOr("PING_PONG_INTERVAL", "0"))
-	RedisQuery       = envOr("REDIS_QUERY", "PING")
-	FreshClient      = envOr("FRESH_CLIENT", "true") != "false"
-	StickyClient     = envOr("STICKY_CLIENT", "false") != "false"
-	NoClose          = envOr("NO_CLOSE", "false") != "false"
+	RedisConnString = os.Getenv("REDIS_CONN_STRING")
+	QueryInterval   = mustParseDuration(envOr("QUERY_INTERVAL", "3s"))
+	Forks           = mustParseUint(envOr("FORKS", "0"))
+	ForkConcurrency = mustParseUint(envOr("FORK_CONCURRENCY", "5"))
+	RedisQuery      = envOr("REDIS_QUERY", "PING")
+	FreshClient     = envOr("FRESH_CLIENT", "true") != "false"
+	StickyClient    = envOr("STICKY_CLIENT", "false") != "false"
+	NoClose         = envOr("NO_CLOSE", "false") != "false"
 )
+
+func mustParseUint(s string) uint {
+	u, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		panic(err)
+	}
+	return uint(u)
+}
 
 func mustParseDuration(s string) time.Duration {
 	d, err := time.ParseDuration(s)
@@ -45,19 +55,6 @@ func envOr(k, v string) string {
 func main() {
 	ctx, can := signal.NotifyContext(context.Background(), syscall.SIGINT)
 	defer can()
-
-	if PingPongInterval > 0 {
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(PingPongInterval):
-					log.Println("ping")
-				}
-			}
-		}()
-	}
 
 	go func() {
 		for ctx.Err() == nil {
@@ -88,18 +85,36 @@ func main() {
 		clientOptions.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
-	var stickyClient *redis.Client
+	stickyClientCount := Forks
 	if StickyClient {
-		stickyClient = redis.NewClient(clientOptions)
+		stickyClientCount += 1
+	}
+	stickyClients := make([]*redis.Client, stickyClientCount)
+	for i := range stickyClients {
+		i := i
+		stickyClients[i] = redis.NewClient(clientOptions)
 		defer func() {
 			if NoClose {
 				return
 			}
-			if err := stickyClient.Close(); err != nil {
-				log.Printf("failed to close sticky client: %v", err)
+			if err := stickyClients[i].Close(); err != nil {
+				log.Printf("failed to close sticky client[%d]: %v", i, err)
 			}
 		}()
 	}
+	go func() {
+		semaphores := make(chan bool, ForkConcurrency)
+		for _, stickyClient := range stickyClients[1:] {
+			stickyClient := stickyClient
+			go func() {
+				semaphores <- true
+				if err := tryClient(ctx, stickyClient); err != nil {
+					log.Printf("a fork failed: %v", err)
+				}
+				<-semaphores
+			}()
+		}
+	}()
 
 	for {
 		if FreshClient {
@@ -120,8 +135,8 @@ func main() {
 			}
 		}
 
-		if stickyClient != nil {
-			if err := tryClient(ctx, stickyClient); err != nil {
+		if len(stickyClients) > 0 {
+			if err := tryClient(ctx, stickyClients[0]); err != nil {
 				log.Printf("failed to use a sticky client: %v", err)
 			}
 		}
