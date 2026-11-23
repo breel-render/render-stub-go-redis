@@ -104,27 +104,29 @@ func main() {
 			}
 		}()
 	}
-	go func() {
-		semaphores := make(chan bool, ForkConcurrency)
-		wg := &sync.WaitGroup{}
-		goodForks := &atomic.Uint32{}
-		for _, stickyClient := range stickyClients[1:] {
-			stickyClient := stickyClient
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				semaphores <- true
-				if err := tryClient(ctx, stickyClient); err != nil {
-					log.Printf("a fork failed: %v", err)
-				} else {
-					goodForks.Add(1)
-				}
-				<-semaphores
-			}()
-		}
-		wg.Wait()
-		log.Printf("%d/%d forks succeeded", goodForks.Load(), Forks)
-	}()
+	if len(stickyClients) > 0 {
+		go func() {
+			semaphores := make(chan bool, ForkConcurrency)
+			wg := &sync.WaitGroup{}
+			goodForks := &atomic.Uint32{}
+			for _, stickyClient := range stickyClients[1:] {
+				stickyClient := stickyClient
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					semaphores <- true
+					if err := tryClient(ctx, stickyClient); err != nil {
+						log.Printf("a fork failed: %v", err)
+					} else {
+						goodForks.Add(1)
+					}
+					<-semaphores
+				}()
+			}
+			wg.Wait()
+			log.Printf("%d/%d forks succeeded", goodForks.Load(), Forks)
+		}()
+	}
 
 	for {
 		if FreshClient {
