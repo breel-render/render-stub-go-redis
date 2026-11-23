@@ -54,6 +54,8 @@ func envOr(k, v string) string {
 	return v2
 }
 
+var lastResult string
+
 func main() {
 	ctx, can := signal.NotifyContext(context.Background(), syscall.SIGINT)
 	defer can()
@@ -61,7 +63,9 @@ func main() {
 	go func() {
 		for ctx.Err() == nil {
 			time.Sleep(time.Second)
-			http.ListenAndServe(":10000", http.HandlerFunc(http.NotFound))
+			http.ListenAndServe(":10000", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintln(w, lastResult)
+			}))
 		}
 	}()
 
@@ -185,6 +189,7 @@ func tryClient(ctx context.Context, c *redis.Client) error {
 		return fmt.Errorf("failed to use client result (%s): (%s) %w", RedisQuery, err, err)
 	} else {
 		log.Printf("%q = %v", RedisQuery, result)
+		lastResult = fmt.Sprint(result)
 	}
 
 	return nil
